@@ -24,11 +24,13 @@ export default defineConfig({
             buttonAriaLabel: '搜索文档'
           },
           modal: {
+            displayDetails: '显示详情',
             noResultsText: '无法找到相关结果',
             resetButtonTitle: '清除查询条件',
             footer: {
               selectText: '选择',
-              navigateText: '切换'
+              navigateText: '切换',
+              closeText: '关闭'
             }
           }
         }
