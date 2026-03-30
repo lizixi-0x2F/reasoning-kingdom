@@ -287,22 +287,74 @@ $$
 
 你要实现的逻辑是：
 
-    伪代码：
-    1. 定义假设空间 H = { h_1, h_2, ..., h_n }
-       （比如：硬币正面概率 = {0.1, 0.2, ..., 0.9}）
+```python
+import numpy as np
+import matplotlib.pyplot as plt
 
-    2. 给每个假设分配先验概率 P(h_i)
-       （初始时均匀分布，或者你有理由相信某个假设更可能）
+# ── 步骤 1：定义假设空间 ──────────────────────────────────────────
+# 假设硬币正面朝上的概率 θ 取以下离散值
+hypotheses = np.arange(0.1, 1.0, 0.1)   # [0.1, 0.2, ..., 0.9]
 
-    3. 对于每一条新观测 e：
-       a. 计算每个假设下观测到 e 的似然 P(e | h_i)
-       b. 计算 unnormalized 后验：P(e | h_i) × P(h_i)
-       c. 归一化：除以所有假设的未归一化后验之和
-       d. 更新先验：P(h_i) ← P(h_i | e)
+# ── 步骤 2：给每个假设分配先验概率 ──────────────────────────────
+# 均匀先验：认为每种 θ 一开始同等可能
+prior = np.ones(len(hypotheses)) / len(hypotheses)
 
-    4. 记录每次更新后，最高概率假设是什么
+# ── 步骤 3：贝叶斯更新函数 ──────────────────────────────────────
+def bayesian_update(prior, hypotheses, observation):
+    """
+    根据单次观测更新后验分布。
+    observation: 1 表示正面（Head），0 表示反面（Tail）
+    """
+    # a. 计算每个假设下观测到该结果的似然 P(e | h_i)
+    if observation == 1:
+        likelihoods = hypotheses           # 正面：似然 = θ
+    else:
+        likelihoods = 1.0 - hypotheses    # 反面：似然 = 1 - θ
 
-做完之后，在纸上画一条折线图：横轴是观测的序号，纵轴是当前"最可能的假设"的后验概率。
+    # b. 计算未归一化后验：P(e | h_i) × P(h_i)
+    unnormalized = likelihoods * prior
+
+    # c. 归一化：除以所有未归一化后验之和，确保概率和为 1
+    posterior = unnormalized / unnormalized.sum()
+
+    return posterior
+
+# ── 步骤 4：模拟观测序列并逐步更新 ──────────────────────────────
+# 示例：手动输入一组正/反面序列（1=正面，0=反面）
+observations = [1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1,
+                1, 1, 0, 1, 1]
+
+top_hypothesis_history = []   # 记录每轮最高概率假设的索引
+top_posterior_history  = []   # 记录每轮最高后验概率值
+
+current_prior = prior.copy()
+
+for i, obs in enumerate(observations):
+    current_prior = bayesian_update(current_prior, hypotheses, obs)
+
+    # 记录最高概率假设
+    best_idx = np.argmax(current_prior)
+    top_hypothesis_history.append(hypotheses[best_idx])
+    top_posterior_history.append(current_prior[best_idx])
+
+    print(f"观测 {i+1:2d}: {'正面' if obs==1 else '反面'} | "
+          f"最可能的 θ = {hypotheses[best_idx]:.1f} | "
+          f"后验概率 = {current_prior[best_idx]:.3f}")
+
+# ── 绘制折线图：最高概率假设的后验概率随观测次数的变化 ──────────
+plt.figure(figsize=(10, 4))
+plt.plot(range(1, len(observations) + 1), top_posterior_history,
+         marker='o', linewidth=2)
+plt.xlabel("观测序号")
+plt.ylabel("最高概率假设的后验概率")
+plt.title("贝叶斯更新：后验概率随观测收敛过程")
+plt.ylim(0, 1)
+plt.grid(True, alpha=0.4)
+plt.tight_layout()
+plt.show()
+```
+
+做完之后，查看折线图：横轴是观测的序号，纵轴是当前"最可能的假设"的后验概率。
 
 **你的第二个问题：** 你需要多少次观测，后验概率才开始稳定下来？这个数字和先验的选取有什么关系？
 
@@ -322,8 +374,26 @@ $$
 
 **第三层（元推理级别）**：你对自己的预测有多大把握？你的后验熵是多少？后验越均匀（熵越高），意味着你对假设空间越不确定，预测应该越保守。
 
-    伪代码：后验熵
-    entropy = -sum( P(h_i) × log(P(h_i)) for each h_i )
+```python
+import numpy as np
+
+def posterior_entropy(posterior):
+    """
+    计算后验分布的熵（Shannon entropy）。
+    熵越高，表示对假设空间越不确定；熵越低，表示信念越集中。
+    posterior: 包含各假设后验概率的 numpy 数组
+    """
+    # 过滤掉概率为 0 的项（log(0) 无意义）
+    p = posterior[posterior > 0]
+    # 计算香农熵：H = -∑ P(h_i) × log(P(h_i))
+    entropy = -np.sum(p * np.log(p))
+    return entropy
+
+# 示例用法：假设当前后验分布
+example_posterior = np.array([0.05, 0.1, 0.2, 0.4, 0.15, 0.05, 0.03, 0.01, 0.01])
+h = posterior_entropy(example_posterior)
+print(f"后验熵 = {h:.4f}（越接近 0 表示越确定，最大值约为 {np.log(len(example_posterior)):.4f}）")
+```
 
 **你的第三个问题：** 在什么情况下，第三层的元信息（"我不确定"）应该覆盖第一层的直接预测？你能找到一个具体的例子吗？
 

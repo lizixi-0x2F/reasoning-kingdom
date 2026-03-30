@@ -574,21 +574,50 @@ $$
 
 ### 第三步:在三个测试集上评估
 
-    伪代码:评估流程
+```python
+import numpy as np
+import torch
+import torch.nn as nn
+from sklearn.metrics import accuracy_score
 
-    1. ID测试集(和训练集同分布):
-       acc_id = evaluate(model, test_id)
+# ── 辅助函数：评估模型准确率 ────────────────────────────────────
+def evaluate(model, dataloader, device='cpu'):
+    """返回模型在给定数据集上的准确率（0~1）。"""
+    model.eval()
+    all_preds, all_labels = [], []
+    with torch.no_grad():
+        for X_batch, y_batch in dataloader:
+            X_batch = X_batch.to(device)
+            logits = model(X_batch)
+            preds = logits.argmax(dim=1).cpu().numpy()
+            all_preds.extend(preds)
+            all_labels.extend(y_batch.numpy())
+    return accuracy_score(all_labels, all_preds)
 
-    2. OOD测试集(捷径失效):
-       acc_ood = evaluate(model, test_ood)
+# 1. ID 测试集（和训练集同分布，捷径依然存在）
+acc_id = evaluate(model, test_id_loader)
+print(f"ID 测试集准确率：{acc_id:.3f}")
 
-    3. 无捷径基线(如果可行,生成一个训练集完全没有捷径的版本):
-       train_baseline = 数据集(捷径相关性 = 50%, 即随机)
-       model_baseline = train(train_baseline)
-       acc_baseline_ood = evaluate(model_baseline, test_ood)
+# 2. OOD 测试集（捷径失效：位置/标记被反转）
+acc_ood = evaluate(model, test_ood_loader)
+print(f"OOD 测试集准确率：{acc_ood:.3f}")
 
-    4. 计算泛化差距:
-       gap = acc_id - acc_ood
+# 3. 无捷径基线（可选）：用捷径相关性=50% 的数据重新训练，再评估 OOD
+# train_baseline = 重新生成捷径相关性为 50%（随机）的训练集
+# model_baseline = 训练新模型（同样架构，同样超参数）
+# acc_baseline_ood = evaluate(model_baseline, test_ood_loader)
+# print(f"无捷径基线 OOD 准确率：{acc_baseline_ood:.3f}")
+
+# 4. 计算泛化差距
+gap = acc_id - acc_ood
+print(f"\n泛化差距（ID - OOD）：{gap:.3f}")
+if gap < 0.05:
+    print("→ 泛化良好，模型可能学到了稳定特征")
+elif gap < 0.20:
+    print("→ 部分依赖捷径，泛化能力中等")
+else:
+    print("→ 严重依赖捷径，模型掉进陷阱了！")
+```
 
 **你的第二个问题:** 泛化差距有多大?如果 gap \> 30%,说明模型严重依赖捷径。你的模型掉进陷阱了吗?
 
@@ -602,16 +631,67 @@ $$
 
 **对于图像:** 用梯度类激活图(Grad-CAM)或简单的显著性图,看模型在做预测时关注图像的哪个区域。
 
-    伪代码:显著性图
+**对于图像:** 用梯度类激活图(Grad-CAM)或简单的显著性图,看模型在做预测时关注图像的哪个区域。
 
-    对于测试集中的一个样本 x:
-    1. 前向传播得到预测 ŷ
-    2. 计算 ŷ 对输入 x 的梯度 g = ∂ŷ / ∂x
-    3. 取梯度的绝对值 |g| 作为显著性
-    4. 可视化:把 |g| 叠加在原图上
+```python
+import torch
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
+import numpy as np
 
-    如果模型依赖位置捷径,显著性会集中在左/右半边,
-    而不是形状的边缘。
+# ── 基于梯度的显著性图（适用于图像分类模型）────────────────────
+def saliency_map(model, x_sample, target_class):
+    """
+    计算预测对输入像素的梯度绝对值，作为显著性。
+    x_sample: shape=(1, C, H, W) 的张量，requires_grad 将被启用
+    target_class: 目标类别的索引（0 或 1）
+    返回 shape=(H, W) 的显著性图（各通道取最大值）
+    """
+    model.eval()
+    x = x_sample.clone().detach().requires_grad_(True)  # 启用梯度追踪
+
+    # 前向传播得到预测概率
+    logits = model(x)
+    y_hat = logits[0, target_class]  # 取目标类别的 logit
+
+    # 反向传播，计算 y_hat 对输入 x 的梯度
+    model.zero_grad()
+    y_hat.backward()
+
+    # 取梯度的绝对值，跨通道取最大值得到二维显著性图
+    saliency = x.grad.data.abs()           # shape=(1, C, H, W)
+    saliency, _ = saliency.max(dim=1)      # shape=(1, H, W)
+    saliency = saliency.squeeze().numpy()  # shape=(H, W)
+    return saliency
+
+# 从 OOD 测试集中取一个样本，看模型关注哪里
+sample_x, sample_y = next(iter(test_ood_loader))  # 取一个 batch
+x0 = sample_x[0:1]   # 第一张图，shape=(1, C, H, W)
+pred_class = model(x0).argmax(dim=1).item()
+
+sal = saliency_map(model, x0, target_class=pred_class)
+
+# 可视化：把显著性叠加在原图上
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+
+# 左：原始图像（如果是单通道灰度图）
+axes[0].imshow(x0.squeeze().detach().numpy(), cmap='gray')
+axes[0].set_title(f'原图（真实类别={sample_y[0].item()}，预测={pred_class}）')
+axes[0].axis('off')
+
+# 右：显著性热力图
+im = axes[1].imshow(sal, cmap='hot')
+axes[1].set_title('显著性图（模型关注区域）')
+axes[1].axis('off')
+plt.colorbar(im, ax=axes[1])
+
+plt.suptitle('如果显著性集中在图像左/右半边，说明模型在看位置捷径')
+plt.tight_layout()
+plt.show()
+
+# 如果模型依赖位置捷径，显著性会集中在左/右半边，
+# 而不是形状的边缘。
+```
 
 **对于文本:** 计算每个词对预测的贡献(通过遮挡或梯度)。
 
@@ -629,17 +709,64 @@ $$
 
 模型在OOD数据上失败时,它知道自己在失败吗?
 
-    伪代码:置信度分析
+模型在OOD数据上失败时,它知道自己在失败吗?
 
-    对于 ID 和 OOD 测试集:
-    1. 记录每个预测的最大 softmax 概率(置信度)
-    2. 计算平均置信度
-    3. 画置信度直方图
+```python
+import torch
+import torch.nn.functional as F
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score
 
-    对比:
-    - ID数据:高准确率 + 高置信度 → 正常
-    - OOD数据:低准确率 + 高置信度 → 过度自信(危险!)
-    - OOD数据:低准确率 + 低置信度 → 模型知道自己不确定(相对安全)
+# ── 置信度分析：比较 ID 和 OOD 数据上的 softmax 最大概率 ───────
+def get_confidence_and_accuracy(model, dataloader):
+    """
+    返回每个样本的最大 softmax 概率（置信度）和是否预测正确。
+    """
+    model.eval()
+    confidences, corrects = [], []
+    with torch.no_grad():
+        for X_batch, y_batch in dataloader:
+            logits = model(X_batch)
+            probs = F.softmax(logits, dim=1)          # 转为概率分布
+            conf, pred = probs.max(dim=1)             # 最大概率即为置信度
+            corrects.extend((pred == y_batch).numpy())
+            confidences.extend(conf.numpy())
+    return np.array(confidences), np.array(corrects)
+
+# 在 ID 和 OOD 数据上分别计算置信度
+conf_id,  correct_id  = get_confidence_and_accuracy(model, test_id_loader)
+conf_ood, correct_ood = get_confidence_and_accuracy(model, test_ood_loader)
+
+# 打印汇总统计
+print(f"ID 数据  — 准确率: {correct_id.mean():.3f}，平均置信度: {conf_id.mean():.3f}")
+print(f"OOD 数据 — 准确率: {correct_ood.mean():.3f}，平均置信度: {conf_ood.mean():.3f}")
+
+# 画置信度直方图
+fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
+axes[0].hist(conf_id,  bins=20, color='steelblue', edgecolor='white', alpha=0.85)
+axes[0].set_title(f'ID 数据置信度分布\n（准确率={correct_id.mean():.2f}）')
+axes[0].set_xlabel('最大 softmax 概率')
+axes[0].set_ylabel('样本数')
+axes[1].hist(conf_ood, bins=20, color='tomato',    edgecolor='white', alpha=0.85)
+axes[1].set_title(f'OOD 数据置信度分布\n（准确率={correct_ood.mean():.2f}）')
+axes[1].set_xlabel('最大 softmax 概率')
+plt.tight_layout()
+plt.show()
+
+# 诊断：过度自信判断
+if conf_ood.mean() > 0.8 and correct_ood.mean() < 0.5:
+    print("⚠ 过度自信！OOD 数据：高置信度 + 低准确率 → 模型在自信地犯错（危险！）")
+elif conf_ood.mean() < 0.6:
+    print("✓ 模型知道自己不确定（OOD 置信度较低），相对安全")
+else:
+    print("OOD 置信度适中，请结合准确率综合判断")
+
+# 对比小结：
+# - ID 数据：高准确率 + 高置信度 → 正常
+# - OOD 数据：低准确率 + 高置信度 → 过度自信（危险！）
+# - OOD 数据：低准确率 + 低置信度 → 模型知道自己不确定（相对安全）
+```
 
 **你的第四个问题(核心问题):** 模型在OOD数据上的平均置信度是多少?如果置信度仍然很高(\> 0.8),但准确率很低(\< 0.5),说明模型在自信地犯错——这是捷径学习最危险的后果。
 

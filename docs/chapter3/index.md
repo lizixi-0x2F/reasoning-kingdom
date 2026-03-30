@@ -371,11 +371,48 @@ $$
 
 用本章第五节给出的逻辑实现：
 
-    伪代码：类比查询
-    目标向量 = vec("king") - vec("man") + vec("woman")
-    结果 = 在词汇表中找到与目标向量余弦相似度最高的词
-           （排除 "king", "man", "woman" 本身）
-    输出结果和相似度分数
+```python
+import numpy as np
+
+# 假设 model 是已加载的 gensim KeyedVectors 对象
+# 加载方式示例：
+#   from gensim.models import KeyedVectors
+#   model = KeyedVectors.load_word2vec_format('GoogleNews-vectors-negative300.bin', binary=True)
+
+def analogy_query(model, positive_word, minus_word, plus_word, topn=5):
+    """
+    执行向量类比查询：vec(positive_word) - vec(minus_word) + vec(plus_word)
+    model: gensim KeyedVectors 对象
+    返回：最近邻词及其余弦相似度分数的列表
+    """
+    # 计算目标向量：vec("king") - vec("man") + vec("woman")
+    target_vector = (model[positive_word]
+                     - model[minus_word]
+                     + model[plus_word])
+
+    # 在词汇表中找到与目标向量余弦相似度最高的词
+    # gensim 的 similar_by_vector 会自动排除输入词（通过 negative 参数控制）
+    results = model.similar_by_vector(
+        target_vector,
+        topn=topn + 3  # 多取几个，以便手动过滤输入词
+    )
+
+    # 排除 positive_word、minus_word、plus_word 本身
+    exclude = {positive_word.lower(), minus_word.lower(), plus_word.lower()}
+    filtered = [(word, score) for word, score in results
+                if word.lower() not in exclude][:topn]
+
+    return filtered
+
+
+# ── 运行经典类比：king - man + woman ≈ ? ───────────────────────
+results = analogy_query(model, "king", "man", "woman")
+
+print("类比查询：king - man + woman ≈ ?")
+print("─" * 35)
+for rank, (word, score) in enumerate(results, 1):
+    print(f"  第{rank}名: {word:15s}  余弦相似度 = {score:.4f}")
+```
 
 你应该得到 “queen”，余弦相似度接近 0.7 到 0.9。
 
@@ -435,17 +472,76 @@ $$
 
 对于一组你选择的类比对，计算以下两个量：
 
-    伪代码：类比精度测量
+```python
+import numpy as np
 
-    对于每个类比 (A, B, C, D)，其中 A:B :: C:D：
-      预测向量 = vec(B) - vec(A) + vec(C)
-      实际最近邻排名 = 词汇表中按相似度排序后 D 的位置
+def cosine_similarity(v1, v2):
+    """计算两个向量之间的余弦相似度。"""
+    return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
-      记录：
-      - D 是否出现在前 1 名（精确命中）
-      - D 是否出现在前 5 名（近似命中）
-      - vec(B) - vec(A) 和 vec(D) - vec(C) 之间的余弦相似度
-        （这是\"偏移向量一致性\"的直接测量）
+def analogy_precision(model, analogies):
+    """
+    批量测量类比精度。
+    analogies: 列表，每项为 (A, B, C, D)，表示 A:B :: C:D 的类比关系。
+    返回：每条类比的详细测量结果。
+    """
+    results = []
+
+    for (A, B, C, D) in analogies:
+        # 计算预测向量：vec(B) - vec(A) + vec(C)
+        predicted_vector = model[B] - model[A] + model[C]
+
+        # 获取整个词汇表按相似度排序的结果（排除输入词）
+        exclude = {A.lower(), B.lower(), C.lower()}
+        neighbors = model.similar_by_vector(predicted_vector, topn=len(model.key_to_index))
+        # 过滤掉输入词，得到带排名的词表
+        filtered_neighbors = [(word, score) for word, score in neighbors
+                               if word.lower() not in exclude]
+
+        # 实际最近邻排名：词汇表中按相似度排序后 D 的位置
+        rank_of_D = None
+        for idx, (word, score) in enumerate(filtered_neighbors, 1):
+            if word.lower() == D.lower():
+                rank_of_D = idx
+                break
+
+        # 计算偏移向量一致性：vec(B) - vec(A) 和 vec(D) - vec(C) 的余弦相似度
+        # 这直接衡量两对词之间的"关系方向"是否一致
+        offset_AB = model[B] - model[A]
+        offset_CD = model[D] - model[C]
+        offset_consistency = cosine_similarity(offset_AB, offset_CD)
+
+        results.append({
+            "analogy": f"{A}:{B} :: {C}:{D}",
+            "top1_hit": rank_of_D == 1,           # D 是否出现在前 1 名（精确命中）
+            "top5_hit": rank_of_D is not None and rank_of_D <= 5,  # D 是否出现在前 5 名
+            "rank_of_D": rank_of_D,
+            "offset_consistency": offset_consistency,  # 偏移向量一致性（几何层面的测量）
+        })
+
+    return results
+
+
+# ── 示例测试 ────────────────────────────────────────────────────
+test_analogies = [
+    ("man",    "king",    "woman",  "queen"),    # 性别 × 皇室
+    ("france", "paris",   "japan",  "tokyo"),    # 国家 × 首都
+    ("go",     "went",    "run",    "ran"),      # 动词时态
+    ("good",   "bad",     "big",    "small"),    # 反义词
+    ("man",    "doctor",  "woman",  "nurse"),    # 职业偏见案例
+]
+
+precision_results = analogy_precision(model, test_analogies)
+
+print(f"{'类比':30s} {'精确命中':^8s} {'前5命中':^8s} {'排名':^6s} {'偏移一致性':^10s}")
+print("─" * 70)
+for r in precision_results:
+    print(f"{r['analogy']:30s} "
+          f"{'✓' if r['top1_hit'] else '✗':^8s} "
+          f"{'✓' if r['top5_hit'] else '✗':^8s} "
+          f"{str(r['rank_of_D']):^6s} "
+          f"{r['offset_consistency']:^10.4f}")
+```
 
 **你的第四个问题（核心问题）：** 类比失败的时候，"偏移向量一致性"分数是高还是低？也就是说，几何结构（偏移方向相同）是否成立，但最近邻检索却失败了？如果是这样，失败的原因在几何，还是在检索方式？这说明了第七节的哪个论点？
 
@@ -459,11 +555,39 @@ $$
 
 余弦相似度衡量方向，不衡量长度。找两个词，它们的余弦相似度很高，但你直觉上认为它们语义差距很大——或者反过来，余弦相似度低，但你认为它们语义应该很近。
 
-    伪代码：反直觉相似度搜索
-    对于词 W：
-      找余弦相似度最高的 20 个词
-      在其中找一个让你感到违和的
-      找余弦相似度低于 0.3 的词中，有没有语义上你认为相关的？
+```python
+def find_counterintuitive_similarities(model, word, topn=20, low_threshold=0.3):
+    """
+    对于给定词 W：
+    1. 找余弦相似度最高的 topn 个词，从中寻找"违和感"词
+    2. 找余弦相似度低于 low_threshold 的词，检查有无语义上相关但几何距离远的词
+    model: gensim KeyedVectors 对象
+    """
+    print(f"=== 词 '{word}' 的余弦相似度分析 ===\n")
+
+    # 找余弦相似度最高的 topn 个词
+    top_neighbors = model.most_similar(word, topn=topn)
+    print(f"余弦相似度最高的 {topn} 个词（寻找让你感到违和的词）：")
+    for w, score in top_neighbors:
+        print(f"  {w:20s}  相似度 = {score:.4f}")
+
+    print()
+
+    # 找余弦相似度较低的词中是否有语义上你认为相关的
+    # 方法：对一组候选词直接计算相似度
+    candidate_words = ["science", "art", "mathematics", "philosophy",
+                       "literature", "music", "history", "biology"]
+    print(f"候选词的余弦相似度（相似度低于 {low_threshold} 但你认为语义相关？）：")
+    for candidate in candidate_words:
+        if candidate in model:
+            sim = model.similarity(word, candidate)
+            flag = " ← 语义相关但距离远？" if sim < low_threshold else ""
+            print(f"  {candidate:20s}  相似度 = {sim:.4f}{flag}")
+
+
+# ── 示例运行 ────────────────────────────────────────────────────
+find_counterintuitive_similarities(model, word="physics", topn=20, low_threshold=0.3)
+```
 
 **你的第五个问题：** 余弦相似度没有捕获到的语义关系，是什么类型的关系？这和本章第八节"分布假设的上限"有什么联系？
 

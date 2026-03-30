@@ -126,25 +126,138 @@ $$
 
 可采纳性不是一个抽象的数学要求。它是A\*能否找到最优解的**充要条件**。
 
-让我们亲手验证这件事。你需要一张纸、一支笔,和15分钟时间。
+让我们亲手验证这件事。
 
 **实验目标**:用同一个迷宫,分别用可采纳和不可采纳的启发函数运行A\*,看看结果有什么不同。
 
-拿出一张纸,画一个简单的网格地图:
+迷宫地图（0=可通行，1=障碍物，S=起点，G=终点）：
 
-    S . . . . .
-    . # # # # .
-    . . . . # .
-    . # # . # .
-    . . . . . G
+```
+S . . . . .
+. # # # # .
+. . . . # .
+. # # . # .
+. . . . . G
+```
 
-- S是起点,G是终点
+- S是起点(0,0),G是终点(4,5)
 
 - `.`是可通行格子,每步代价=1
 
 - `#`是障碍物,不可通行
 
 **任务**:找从S到G的最短路径。
+
+```python
+import heapq
+
+# ------------------------------------------------------------------
+# 定义迷宫：5行6列，1=障碍物，0=可通行
+# S=(0,0)，G=(4,5)
+# ------------------------------------------------------------------
+GRID = [
+    [0, 0, 0, 0, 0, 0],  # 行0：S . . . . .
+    [0, 1, 1, 1, 1, 0],  # 行1：. # # # # .
+    [0, 0, 0, 0, 1, 0],  # 行2：. . . . # .
+    [0, 1, 1, 0, 1, 0],  # 行3：. # # . # .
+    [0, 0, 0, 0, 0, 0],  # 行4：. . . . . G
+]
+ROWS, COLS = len(GRID), len(GRID[0])
+START = (0, 0)
+GOAL  = (4, 5)
+
+def neighbors(r, c):
+    """返回上下左右四个可通行邻居"""
+    for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+        nr, nc = r+dr, c+dc
+        if 0 <= nr < ROWS and 0 <= nc < COLS and GRID[nr][nc] == 0:
+            yield nr, nc
+
+def reconstruct_path(parent, node):
+    """从 parent 字典回溯，重建路径"""
+    path = []
+    while node is not None:
+        path.append(node)
+        node = parent[node]
+    return list(reversed(path))
+
+def astar(h_func, label="A*"):
+    """
+    通用 A* 搜索。
+    h_func(r, c) 是启发函数；返回 (路径长度, 路径, 扩展节点数)。
+    """
+    # 优先队列元素：(f, g, 节点)
+    open_heap = [(h_func(*START), 0, START)]
+    g_cost = {START: 0}    # 从起点到各节点的实际代价
+    parent = {START: None} # 路径回溯
+    closed = set()
+    expanded = 0           # 记录扩展的节点数
+
+    while open_heap:
+        f, g, node = heapq.heappop(open_heap)
+
+        if node in closed:
+            continue
+        closed.add(node)
+        expanded += 1
+
+        # 到达终点
+        if node == GOAL:
+            path = reconstruct_path(parent, node)
+            return len(path) - 1, path, expanded  # 步数=节点数-1
+
+        # 扩展邻居
+        for nb in neighbors(*node):
+            new_g = g + 1  # 每步代价为1
+            if nb not in g_cost or new_g < g_cost[nb]:
+                g_cost[nb] = new_g
+                parent[nb] = node
+                f_val = new_g + h_func(*nb)
+                heapq.heappush(open_heap, (f_val, new_g, nb))
+
+    return None, [], expanded  # 无解
+
+# ------------------------------------------------------------------
+# 步骤1：可采纳启发函数——曼哈顿距离
+#   h₁(n) = |n_row - G_row| + |n_col - G_col|
+#   永远不高估剩余代价 → 满足可采纳性 → 保证最优解
+# ------------------------------------------------------------------
+def h_admissible(r, c):
+    """曼哈顿距离：可采纳，不高估"""
+    return abs(r - GOAL[0]) + abs(c - GOAL[1])
+
+steps1, path1, exp1 = astar(h_admissible, "可采纳A*")
+print("=== 步骤1：可采纳启发函数（曼哈顿距离）===")
+print(f"路径长度：{steps1} 步")
+print(f"扩展节点数：{exp1}")
+print(f"路径：{path1}")
+
+# ------------------------------------------------------------------
+# 步骤2：不可采纳启发函数——曼哈顿距离 × 2
+#   h₂(n) = 2 × (|n_row - G_row| + |n_col - G_col|)
+#   高估了剩余代价 → 违反可采纳性 → 可能找到次优路径
+# ------------------------------------------------------------------
+def h_inadmissible(r, c):
+    """2倍曼哈顿距离：不可采纳，会高估"""
+    return 2 * (abs(r - GOAL[0]) + abs(c - GOAL[1]))
+
+steps2, path2, exp2 = astar(h_inadmissible, "不可采纳A*")
+print("\n=== 步骤2：不可采纳启发函数（2倍曼哈顿距离）===")
+print(f"路径长度：{steps2} 步")
+print(f"扩展节点数：{exp2}")
+print(f"路径：{path2}")
+
+# ------------------------------------------------------------------
+# 对比结论
+# ------------------------------------------------------------------
+print("\n=== 对比结论 ===")
+print(f"可采纳启发函数   → {steps1} 步（最优解保证）")
+print(f"不可采纳启发函数 → {steps2} 步（{'最优' if steps1==steps2 else '次优，非最优'}）")
+if steps1 != steps2:
+    print(f"  差距：{steps2 - steps1} 步（契约被打破，找到了更长的路径）")
+print(f"\n注意：可采纳版扩展 {exp1} 个节点，不可采纳版扩展 {exp2} 个节点。")
+print("  不可采纳启发函数扩展更少节点，速度更快，但牺牲了最优性保证。")
+```
 
 ### 步骤1:用可采纳启发函数
 

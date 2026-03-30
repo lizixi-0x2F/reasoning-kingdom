@@ -363,25 +363,85 @@ $$
 
 **选项 A：二维圆环嵌入三维**
 
-    伪代码：
-    t = 在 [0, 2π] 上均匀采样 N 个点
-    r = 主圆环半径（比如 3），tube = 管道半径（比如 1）
+```python
+import numpy as np
+import matplotlib.pyplot as plt
 
-    x = (r + tube × cos(φ)) × cos(t)
-    y = (r + tube × cos(φ)) × sin(t)
-    z = tube × sin(φ)
+np.random.seed(42)
+N = 2000  # 采样点数
 
-    其中 φ 也是 [0, 2π] 上均匀采样
-    加入少量高斯噪声（标准差 0.05）
+# 均匀采样圆环的两个角度参数
+t = np.random.uniform(0, 2 * np.pi, N)   # 绕主轴的角度
+phi = np.random.uniform(0, 2 * np.pi, N) # 绕管道截面的角度
+
+r = 3.0    # 主圆环半径
+tube = 1.0 # 管道半径
+
+# 圆环参数方程：嵌入三维空间
+x = (r + tube * np.cos(phi)) * np.cos(t)
+y = (r + tube * np.cos(phi)) * np.sin(t)
+z = tube * np.sin(phi)
+
+# 加入少量高斯噪声模拟测量误差
+noise_std = 0.05
+x += np.random.normal(0, noise_std, N)
+y += np.random.normal(0, noise_std, N)
+z += np.random.normal(0, noise_std, N)
+
+# 拼成数据矩阵，shape=(N, 3)
+data_torus = np.stack([x, y, z], axis=1)
+# 保存内在坐标用于后续染色（t 是主角度，phi 是管道角度）
+intrinsic_t = t
+intrinsic_phi = phi
+
+# 可视化（用 t 值染色）
+fig = plt.figure(figsize=(8, 6))
+ax = fig.add_subplot(111, projection='3d')
+sc = ax.scatter(x, y, z, c=t, cmap='hsv', s=2, alpha=0.6)
+plt.colorbar(sc, label='内在坐标 t')
+ax.set_title('圆环流形（选项A）')
+plt.tight_layout()
+plt.show()
+```
 
 **选项 B：Swiss Roll（本章图示数据）**
 
-    伪代码：
-    t = 在 [1.5π, 4.5π] 上均匀采样 N 个点
-    x = t × cos(t)
-    z = 在 [0, 1] 上均匀采样
-    y = t × sin(t)
-    加入少量高斯噪声
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.datasets import make_swiss_roll
+
+np.random.seed(42)
+N = 2000  # 采样点数
+
+# 使用 sklearn 生成标准 Swiss Roll
+# t 是内在坐标（卷轴角度），z 是高度方向的内在坐标
+data_swiss, t_swiss = make_swiss_roll(n_samples=N, noise=0.1, random_state=42)
+# data_swiss shape=(N, 3)，列分别是 x, y, z（三维嵌入坐标）
+
+# 或者手动生成（效果等价）：
+t_manual = np.random.uniform(1.5 * np.pi, 4.5 * np.pi, N)  # 卷轴角度
+x_manual = t_manual * np.cos(t_manual)
+z_manual = np.random.uniform(0, 1, N)                        # 高度（第二个内在维度）
+y_manual = t_manual * np.sin(t_manual)
+# 加入少量高斯噪声
+x_manual += np.random.normal(0, 0.1, N)
+y_manual += np.random.normal(0, 0.1, N)
+z_manual += np.random.normal(0, 0.05, N)
+
+# 可视化手动生成的 Swiss Roll（用 t 值染色）
+fig = plt.figure(figsize=(8, 6))
+ax = fig.add_subplot(111, projection='3d')
+sc = ax.scatter(x_manual, y_manual, z_manual, c=t_manual, cmap='viridis', s=2)
+plt.colorbar(sc, label='内在坐标 t（卷轴角度）')
+ax.set_title('Swiss Roll 流形（选项B）')
+plt.tight_layout()
+plt.show()
+
+# 后续使用 sklearn 版本（更标准）
+data = data_swiss          # 三维坐标，shape=(N, 3)
+intrinsic_t = t_swiss      # 内在坐标 t，用于染色
+```
 
 选项 B 有一个内在维度为 2（t 和 z），嵌入在三维空间里。
 
@@ -397,23 +457,66 @@ $$
 
 结构定义：
 
-    伪代码：自动编码器架构
+```python
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 
-    输入：3 维向量（你的嵌入数据点）
+# ── 自动编码器架构定义 ──────────────────────────────────────────
+class Autoencoder(nn.Module):
+    def __init__(self, bottleneck_dim):
+        super().__init__()
+        # 编码器：3 → 16 → d（瓶颈维度）
+        self.encoder = nn.Sequential(
+            nn.Linear(3, 16),      # 输入 3 维（嵌入数据点）
+            nn.ReLU(),             # 非线性激活
+            nn.Linear(16, bottleneck_dim)  # 输出 d 维潜在编码 z
+        )
+        # 解码器：d → 16 → 3（重建原始坐标）
+        self.decoder = nn.Sequential(
+            nn.Linear(bottleneck_dim, 16),
+            nn.ReLU(),
+            nn.Linear(16, 3)       # 输出 3 维重建
+        )
 
-    编码器：
-      线性层：3 → 16
-      激活函数（ReLU）
-      线性层：16 → d   （d 是瓶颈维度，先设 d=2）
+    def forward(self, x):
+        z = self.encoder(x)    # 编码
+        x_hat = self.decoder(z)  # 解码
+        return x_hat, z
 
-    瓶颈：d 维潜在编码 z
+# ── 训练函数 ────────────────────────────────────────────────────
+def train_autoencoder(data_tensor, bottleneck_dim, n_epochs=300, lr=1e-3):
+    """
+    训练自动编码器直到重建误差收敛。
+    返回训练好的模型。
+    """
+    dataset = TensorDataset(data_tensor)
+    loader = DataLoader(dataset, batch_size=256, shuffle=True)
 
-    解码器：
-      线性层：d → 16
-      激活函数（ReLU）
-      线性层：16 → 3
+    model = Autoencoder(bottleneck_dim)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    loss_fn = nn.MSELoss()  # 损失函数：均方误差（重建误差）
 
-    损失函数：均方误差（重建 x̂ 和原始输入 x 之间）
+    for epoch in range(n_epochs):
+        for (batch,) in loader:
+            optimizer.zero_grad()
+            x_hat, _ = model(batch)
+            loss = loss_fn(x_hat, batch)  # 重建误差
+            loss.backward()
+            optimizer.step()
+
+    return model
+
+# ── 示例：使用 Swiss Roll 数据，先设瓶颈维度 d=2 ───────────────
+# （假设 data 已在上一步生成，shape=(N, 3)）
+data_tensor = torch.tensor(data, dtype=torch.float32)  # 转为 PyTorch 张量
+
+# 训练瓶颈维度 d=2 的自动编码器
+model_d2 = train_autoencoder(data_tensor, bottleneck_dim=2)
+print("d=2 自动编码器训练完成")
+```
 
 训练直到重建误差收敛。不需要调超参数，默认设置就行。
 
@@ -427,15 +530,82 @@ $$
 
 用 d = 1, 2, 3, 4, 5 分别训练，对每个 d，记录：
 
-    伪代码：评估流程
+```python
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
 
-    对于每个瓶颈维度 d：
-      1. 训练自动编码器
-      2. 计算训练集上的平均重建误差（MSE）
-      3. 计算测试集上的平均重建误差
-      4. 可视化：把潜在空间 z 用散点图画出来（如果 d=2，直接画；d=1 画一条线）
-         并用原始流形坐标（比如 t 值）给点染色
-      5. 可视化：从潜在空间随机采样 20 个点，解码后画在三维空间里
+# 将数据切分为训练集和测试集（80% / 20%）
+N = len(data_tensor)
+split = int(0.8 * N)
+train_data = data_tensor[:split]
+test_data  = data_tensor[split:]
+
+results = {}  # 存储每个瓶颈维度的结果
+
+for d in [1, 2, 3, 4, 5]:
+    # 1. 训练自动编码器
+    model = train_autoencoder(train_data, bottleneck_dim=d, n_epochs=300)
+    model.eval()
+
+    with torch.no_grad():
+        # 2. 计算训练集的平均重建误差（MSE）
+        train_hat, train_z = model(train_data)
+        train_mse = nn.MSELoss()(train_hat, train_data).item()
+
+        # 3. 计算测试集的平均重建误差
+        test_hat, test_z = model(test_data)
+        test_mse = nn.MSELoss()(test_hat, test_data).item()
+
+    results[d] = {'train_mse': train_mse, 'test_mse': test_mse,
+                  'train_z': train_z.numpy(), 'model': model}
+
+    # 4. 可视化潜在空间（用内在坐标 t 值染色）
+    train_t = intrinsic_t[:split]  # 对应训练集的内在坐标
+    if d == 1:
+        # d=1：潜在空间是一条线，画一维散点
+        fig, ax = plt.subplots(figsize=(8, 2))
+        sc = ax.scatter(train_z.numpy()[:, 0],
+                        np.zeros(len(train_z)),
+                        c=train_t, cmap='viridis', s=5)
+        plt.colorbar(sc, label='内在坐标 t')
+        ax.set_title(f'd={d} 潜在空间（一维）')
+    elif d == 2:
+        # d=2：直接画二维散点图
+        fig, ax = plt.subplots(figsize=(6, 5))
+        sc = ax.scatter(train_z.numpy()[:, 0],
+                        train_z.numpy()[:, 1],
+                        c=train_t, cmap='viridis', s=5)
+        plt.colorbar(sc, label='内在坐标 t')
+        ax.set_title(f'd={d} 潜在空间（二维）')
+    plt.tight_layout()
+    plt.show()
+
+    # 5. 从潜在空间随机采样 20 个点，解码后画在三维空间里
+    with torch.no_grad():
+        # 在潜在空间均匀采样（用训练集潜在编码的范围）
+        z_min = train_z.min(dim=0).values
+        z_max = train_z.max(dim=0).values
+        z_samples = torch.rand(20, d) * (z_max - z_min) + z_min
+        decoded_samples = model.decoder(z_samples).numpy()
+
+    fig = plt.figure(figsize=(7, 5))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(data[:split, 0], data[:split, 1], data[:split, 2],
+               c='lightblue', s=1, alpha=0.3, label='训练数据')
+    ax.scatter(decoded_samples[:, 0], decoded_samples[:, 1], decoded_samples[:, 2],
+               c='red', s=50, zorder=5, label='随机解码点')
+    ax.set_title(f'd={d} 随机解码（随机采样潜在点）')
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+    print(f"d={d}: 训练MSE={train_mse:.4f}, 测试MSE={test_mse:.4f}")
+
+print("\n各瓶颈维度对比：")
+for d, r in results.items():
+    print(f"  d={d}: 训练MSE={r['train_mse']:.4f}, 测试MSE={r['test_mse']:.4f}")
+```
 
 **你的第二个问题：** 当 d=1 时，编码器把二维流形压缩到了一维。它保留了什么？丢失了什么？潜在空间里点的排列，是否保留了原始流形的拓扑结构（比如圆的环形关系）？
 
@@ -451,17 +621,68 @@ $$
 
 生成一批**不在你的流形上**的点——比如随机的三维高斯噪声点。
 
+生成一批**不在你的流形上**的点——比如随机的三维高斯噪声点。
+
 把这批点输入你的自动编码器：
 
-    伪代码：分布外测试
-    分布外数据 = 从标准三维高斯分布采样 100 个点
-    重建 = 解码器（编码器（分布外数据））
-    重建误差 = MSE(分布外数据, 重建)
+```python
+import torch
+import torch.nn as nn
+import numpy as np
+import matplotlib.pyplot as plt
 
-    对比：
-    - 训练集的平均重建误差
-    - 分布外点的平均重建误差
-    - 可视化：把分布外点的重建结果画在三维空间里，它们落在哪里？
+# 使用 d=2 的模型做分布外测试
+model = results[2]['model']
+model.eval()
+
+# 分布外数据：从标准三维高斯分布采样 100 个点
+# 注意：这些点分散在整个三维空间，不限于流形附近
+ood_data = torch.randn(100, 3)  # 标准正态，均值 0，方差 1
+
+with torch.no_grad():
+    # 经过自动编码器重建（编码 → 解码）
+    ood_reconstructed, ood_z = model(ood_data)
+
+# 计算各类数据的重建误差
+loss_fn = nn.MSELoss(reduction='none')  # 每个样本单独计算误差
+with torch.no_grad():
+    train_hat, _ = model(train_data)
+    # 每个训练样本的 MSE（对三个维度取平均）
+    train_errors = loss_fn(train_hat, train_data).mean(dim=1).numpy()
+    # 每个 OOD 样本的 MSE
+    ood_errors   = loss_fn(ood_reconstructed, ood_data).mean(dim=1).numpy()
+
+# 对比重建误差
+print(f"训练集平均重建误差：{train_errors.mean():.4f} ± {train_errors.std():.4f}")
+print(f"分布外点平均重建误差：{ood_errors.mean():.4f} ± {ood_errors.std():.4f}")
+
+# 可视化：把分布外点的重建结果画在三维空间里
+# 观察它们落在哪里（是否被"拉到"流形附近）
+fig = plt.figure(figsize=(10, 5))
+
+# 左图：原始分布外点
+ax1 = fig.add_subplot(121, projection='3d')
+ax1.scatter(data[:500, 0], data[:500, 1], data[:500, 2],
+            c='lightblue', s=2, alpha=0.3, label='训练流形')
+ax1.scatter(ood_data[:, 0], ood_data[:, 1], ood_data[:, 2],
+            c='red', s=30, label='OOD 原始点')
+ax1.set_title('OOD 原始点（散布在三维空间）')
+ax1.legend(fontsize=8)
+
+# 右图：OOD 点经自动编码器重建后的位置
+ax2 = fig.add_subplot(122, projection='3d')
+ax2.scatter(data[:500, 0], data[:500, 1], data[:500, 2],
+            c='lightblue', s=2, alpha=0.3, label='训练流形')
+ax2.scatter(ood_reconstructed[:, 0].numpy(),
+            ood_reconstructed[:, 1].numpy(),
+            ood_reconstructed[:, 2].numpy(),
+            c='orange', s=30, label='OOD 重建点')
+ax2.set_title('OOD 点重建后——被"拉到"流形附近')
+ax2.legend(fontsize=8)
+
+plt.tight_layout()
+plt.show()
+```
 
 **你的第四个问题：** 分布外点经过自动编码器之后，被"拉到"了哪里？它们的重建结果是随机的，还是系统性地落在了训练流形的某个区域？
 
@@ -477,11 +698,56 @@ $$
 
 回到第一步，现在做一个数据驱动的内在维度估计：
 
-    伪代码：PCA 方差解释率
-    1. 对你的训练数据做 PCA
-    2. 计算每个主成分解释的方差比例
-    3. 画累计方差曲线（横轴：主成分数量，纵轴：累计解释方差比）
-    4. 找到\"肘部\"——累计解释方差超过 95% 时需要几个主成分？
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+
+# 对训练数据做 PCA（使用 numpy 数组，非张量）
+train_np = data[:split]  # shape=(N_train, 3)
+
+pca = PCA()               # 不限制主成分数，计算全部
+pca.fit(train_np)
+
+# 每个主成分解释的方差比例
+explained_ratio = pca.explained_variance_ratio_
+# 累计解释方差曲线
+cumulative_ratio = np.cumsum(explained_ratio)
+
+# 画累计方差曲线
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+# 左图：各主成分单独解释方差
+axes[0].bar(range(1, len(explained_ratio) + 1), explained_ratio, color='steelblue')
+axes[0].set_xlabel('主成分编号')
+axes[0].set_ylabel('解释方差比例')
+axes[0].set_title('各主成分解释方差')
+
+# 右图：累计解释方差曲线，找"肘部"
+axes[1].plot(range(1, len(cumulative_ratio) + 1), cumulative_ratio,
+             marker='o', color='tomato')
+axes[1].axhline(y=0.95, color='gray', linestyle='--', label='95% 阈值')
+axes[1].set_xlabel('主成分数量')
+axes[1].set_ylabel('累计解释方差比')
+axes[1].set_title('累计方差曲线（找肘部）')
+axes[1].legend()
+
+plt.tight_layout()
+plt.show()
+
+# 找到累计解释方差超过 95% 时需要几个主成分
+n_components_95 = np.searchsorted(cumulative_ratio, 0.95) + 1
+print(f"累计解释方差 ≥ 95% 所需主成分数：{n_components_95}")
+print(f"各主成分解释方差：{explained_ratio.round(4)}")
+print(f"累计解释方差：{cumulative_ratio.round(4)}")
+
+# 与自动编码器结果对比
+print(f"\nPCA 估计的内在维度：{n_components_95}")
+print("自动编码器各瓶颈维度的测试MSE：")
+for d, r in results.items():
+    print(f"  d={d}: 测试MSE={r['test_mse']:.4f}")
+print("（MSE 突然大幅上升的拐点对应自动编码器估计的内在维度）")
+```
 
 把这个数字和你在第一步写下的预测比较。
 

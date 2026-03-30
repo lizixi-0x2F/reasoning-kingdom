@@ -340,10 +340,36 @@ Dreyfus 当时被 AI 社区嘲笑了。后来被证明他大体上是对的。
 
 用本章第七节展示的格式，写出至少 15 条 If-Then 规则。
 
-    伪代码结构：
-    规则 Rn：
-      前提条件：[条件 1, 条件 2, ...]
-      结论：[结论]
+```python
+# 规则的数据结构：每条规则是一个字典
+# 'conditions'：前提条件列表（列表中所有条件都满足才能触发）
+# 'conclusion'：规则结论（一个字符串）
+# 'name'：规则名称，便于追踪推理轨迹
+
+# 示例：以"判断菜系"为领域的规则库
+rules = [
+    # ── 中间层规则：识别食材特征 ──────────────────────────────
+    {"name": "R1",  "conditions": ["有鱼腥草"],            "conclusion": "使用了四川特色食材"},
+    {"name": "R2",  "conditions": ["有辣椒", "有花椒"],    "conclusion": "麻辣风格"},
+    {"name": "R3",  "conditions": ["有生鱼片"],            "conclusion": "使用了日式食材"},
+    {"name": "R4",  "conditions": ["有味噌"],              "conclusion": "使用了日式食材"},
+    {"name": "R5",  "conditions": ["有豆豉", "有蒸鱼豉油"],"conclusion": "粤式调味"},
+    {"name": "R6",  "conditions": ["有姜葱"],              "conclusion": "粤式底味"},
+
+    # ── 中间层规则：识别烹饪方式 ──────────────────────────────
+    {"name": "R7",  "conditions": ["大火爆炒"],            "conclusion": "高温快炒风格"},
+    {"name": "R8",  "conditions": ["清蒸"],                "conclusion": "清淡烹饪风格"},
+    {"name": "R9",  "conditions": ["炭火烤制"],            "conclusion": "烧烤风格"},
+
+    # ── 终结层规则：得出菜系结论 ──────────────────────────────
+    {"name": "R10", "conditions": ["使用了四川特色食材", "麻辣风格"], "conclusion": "是川菜"},
+    {"name": "R11", "conditions": ["使用了日式食材"],      "conclusion": "是日料"},
+    {"name": "R12", "conditions": ["粤式调味", "清淡烹饪风格"], "conclusion": "是粤菜"},
+    {"name": "R13", "conditions": ["粤式底味", "粤式调味"],"conclusion": "是粤菜"},
+    {"name": "R14", "conditions": ["烧烤风格", "使用了四川特色食材"], "conclusion": "是川式烧烤"},
+    {"name": "R15", "conditions": ["高温快炒风格", "粤式调味"], "conclusion": "是粤式小炒"},
+]
+```
 
 写的时候，注意两件事：
 
@@ -375,16 +401,58 @@ Dreyfus 当时被 AI 社区嘲笑了。后来被证明他大体上是对的。
 
 本章已经给了你完整的伪代码逻辑：
 
-    伪代码：前向链接
-    已知事实集合 = 输入的观测集合
-    重复：
-      对每一条规则：
-        如果规则的所有前提都在已知事实集合里：
-          把规则的结论加入已知事实集合
-          记录触发了哪条规则（这是你的推理轨迹）
-      如果这一轮没有新事实被加入：
-        停止
-    输出：已知事实集合 + 推理轨迹
+```python
+def forward_chain(rules, initial_facts):
+    """
+    前向链接推理引擎。
+    rules: 规则列表，每条规则有 'conditions'、'conclusion'、'name' 三个字段。
+    initial_facts: 初始观测事实的集合（set）。
+    返回：(最终事实集合, 推理轨迹列表)
+    """
+    # 已知事实集合 = 输入的观测集合
+    known_facts = set(initial_facts)
+    reasoning_trace = []  # 记录触发了哪条规则（推理轨迹）
+
+    # 重复推理，直到没有新事实被加入
+    while True:
+        new_fact_added = False  # 标记本轮是否有新事实加入
+
+        for rule in rules:
+            # 检查规则的所有前提是否都在已知事实集合里
+            conditions_met = all(cond in known_facts for cond in rule["conditions"])
+
+            if conditions_met and rule["conclusion"] not in known_facts:
+                # 把规则的结论加入已知事实集合
+                known_facts.add(rule["conclusion"])
+                # 记录触发了哪条规则（这是你的推理轨迹）
+                reasoning_trace.append(
+                    f"触发 {rule['name']}: {rule['conditions']} → {rule['conclusion']}"
+                )
+                new_fact_added = True
+
+        # 如果这一轮没有新事实被加入，停止
+        if not new_fact_added:
+            break
+
+    # 输出：已知事实集合 + 推理轨迹
+    return known_facts, reasoning_trace
+
+
+# ── 示例运行 ────────────────────────────────────────────────────
+# 初始观测：输入的菜品特征
+initial_observations = {"有鱼腥草", "有辣椒", "有花椒", "大火爆炒"}
+
+final_facts, trace = forward_chain(rules, initial_observations)
+
+print("=== 推理轨迹 ===")
+for step in trace:
+    print(" ", step)
+
+print("\n=== 最终结论 ===")
+conclusions = [f for f in final_facts if f.startswith("是")]
+for c in conclusions:
+    print(" ", c)
+```
 
 不需要图形界面，不需要数据库，不需要配置文件。最简单的实现：用列表存规则，用集合存已知事实，用一个循环做推理。
 

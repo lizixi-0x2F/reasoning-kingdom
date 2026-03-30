@@ -107,7 +107,94 @@ $$
 
 **步骤2:构造对角化程序**
 
-**步骤3:询问DIAG(DIAG)**
+下面的 Python 代码将这个思想实验具体化。我们先定义一个"假想的"停机判定器（实际上不可能精确实现），再构造让它自相矛盾的对角化程序，最后用穷举模拟验证矛盾的必然发生。
+
+```python
+import sys
+import threading
+
+# ------------------------------------------------------------------
+# 步骤1：用超时模拟一个"近似停机判定器"
+#   真正的 HALT 不可能存在；这里用有限超时来近似：
+#   若程序在 timeout 秒内返回，就判定为"停机"，否则判"不停机"。
+# ------------------------------------------------------------------
+def approximate_halt(func, timeout=0.05):
+    """
+    近似判断 func() 是否会在 timeout 秒内停机。
+    返回 True 表示"判定停机"，False 表示"判定不停机"。
+    """
+    result = [None]
+
+    def runner():
+        try:
+            func()
+            result[0] = True   # 函数正常返回 → 停机
+        except Exception:
+            result[0] = True   # 抛出异常也算停机
+
+    t = threading.Thread(target=runner, daemon=True)
+    t.start()
+    t.join(timeout)
+    # 超时仍未结束 → 判定为"不停机"
+    return result[0] is True
+
+# ------------------------------------------------------------------
+# 步骤2：构造对角化程序 DIAG
+#   DIAG 的逻辑：
+#     如果 HALT(DIAG) 返回 True（判定 DIAG 会停机）
+#         → DIAG 进入无限循环（实际上不停机）
+#     否则（判定 DIAG 不停机）
+#         → DIAG 立即返回（实际上停机）
+# ------------------------------------------------------------------
+def make_diag(halt_checker):
+    """工厂函数：用给定的 halt_checker 构造对角化程序"""
+    def diag():
+        # 先询问"判定器"：我（diag）自己会停机吗？
+        will_halt = halt_checker(diag)
+        if will_halt:
+            # 判定器说我会停机 → 我偏偏无限循环
+            while True:
+                pass
+        else:
+            # 判定器说我不停机 → 我偏偏立即返回
+            return
+
+    return diag
+
+# ------------------------------------------------------------------
+# 步骤3：询问 DIAG(DIAG) 会停机吗？揭示矛盾
+# ------------------------------------------------------------------
+print("=" * 55)
+print("停机问题不可判定性：对角化论证")
+print("=" * 55)
+
+diag = make_diag(approximate_halt)
+
+# 先用判定器预测结果
+prediction = approximate_halt(diag)
+print(f"\n判定器预测：DIAG 会{'停机' if prediction else '不停机'}")
+
+# 再用超时实际观察 DIAG 的行为
+actual_halted = approximate_halt(diag, timeout=0.1)
+print(f"实际观察：DIAG {'停机了' if actual_halted else '没有停机（超时）'}")
+
+# 判断是否出现矛盾
+if prediction != actual_halted:
+    print("\n→ 矛盾！判定器的预测与 DIAG 的实际行为相反。")
+else:
+    # 注意：由于超时近似，两次观察结果可能"凑巧"一致，
+    # 但这只是近似判定器的误差，不影响严格的数学证明。
+    print("\n→ 注意：超时近似掩盖了矛盾，但严格的数学证明")
+    print("   保证精确的 HALT 必然导致矛盾（见下方分析）。")
+
+print("\n--- 严格逻辑分析 ---")
+print("情况A：HALT(DIAG, DIAG) = True  → DIAG 无限循环 → 实际不停机 → 矛盾！")
+print("情况B：HALT(DIAG, DIAG) = False → DIAG 立即返回 → 实际停机   → 矛盾！")
+print("\n结论：精确的停机判定器 HALT 在逻辑上不可能存在。")
+print("      这不是算法不够聪明，而是逻辑的必然。")
+```
+
+**步骤3：询问DIAG(DIAG)**
 
 现在问:DIAG(DIAG)会停机吗?
 

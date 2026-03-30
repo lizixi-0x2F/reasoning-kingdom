@@ -78,12 +78,74 @@ $$
 
 **步骤1：训练一个简单的3层神经网络**
 
-    输入层: 3个数字 [a, b, c]
-    隐层1: 64维
-    隐层2: 32维
-    输出层: 1维（True/False）
+```python
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+import numpy as np
 
-训练到95%准确率。
+# 设置随机种子以保证可复现
+torch.manual_seed(42)
+np.random.seed(42)
+
+# 生成数据集：随机三元组 (a, b, c)，标签为 a < b < c
+def make_dataset(n=2000):
+    X = np.random.uniform(0, 10, (n, 3)).astype(np.float32)
+    # 标签：三个数是否严格递增
+    y = ((X[:, 0] < X[:, 1]) & (X[:, 1] < X[:, 2])).astype(np.float32)
+    return X, y
+
+X, y = make_dataset()
+split = int(0.8 * len(X))
+X_train, y_train = torch.tensor(X[:split]), torch.tensor(y[:split])
+X_test,  y_test  = torch.tensor(X[split:]),  torch.tensor(y[split:])
+
+train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=64, shuffle=True)
+
+# 定义三层神经网络，保存每层激活供探针使用
+class ThreeLayerNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(3, 64)   # 输入层 → 隐层1（64维）
+        self.fc2 = nn.Linear(64, 32)  # 隐层1 → 隐层2（32维）
+        self.fc3 = nn.Linear(32, 1)   # 隐层2 → 输出层（1维，True/False）
+        self.relu = nn.ReLU()
+        # 用于存储每层激活值
+        self.h1 = None
+        self.h2 = None
+
+    def forward(self, x):
+        self.h1 = self.relu(self.fc1(x))   # 隐层1激活
+        self.h2 = self.relu(self.fc2(self.h1))  # 隐层2激活
+        out = torch.sigmoid(self.fc3(self.h2))   # 输出概率
+        return out
+
+model = ThreeLayerNet()
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
+criterion = nn.BCELoss()
+
+# 训练直到测试准确率达到 95%
+for epoch in range(200):
+    model.train()
+    for xb, yb in train_loader:
+        pred = model(xb).squeeze()
+        loss = criterion(pred, yb)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    # 每20轮检查一次测试准确率
+    if (epoch + 1) % 20 == 0:
+        model.eval()
+        with torch.no_grad():
+            test_pred = (model(X_test).squeeze() > 0.5).float()
+            acc = (test_pred == y_test).float().mean().item()
+        print(f"Epoch {epoch+1}: 测试准确率 = {acc:.1%}")
+        if acc >= 0.95:
+            print("已达到95%准确率，停止训练。")
+            break
+```
 
 **步骤2：在每层插入线性探针**
 
@@ -91,6 +153,43 @@ $$
 - 探针1：预测"a < b？"
 - 探针2：预测"b < c？"
 - 探针3：预测"a < c？"
+
+```python
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+
+# 收集各层激活值和中间标签
+model.eval()
+with torch.no_grad():
+    # 前向传播，触发激活值存储
+    _ = model(X_test)
+    act_input = X_test.numpy()          # 原始输入（3维）
+    act_h1    = model.h1.numpy()         # 隐层1激活（64维）
+    act_h2    = model.h2.numpy()         # 隐层2激活（32维）
+
+# 三个中间标签：a<b, b<c, a<c
+labels = {
+    "a<b": (X_test[:, 0] < X_test[:, 1]).numpy().astype(int),
+    "b<c": (X_test[:, 1] < X_test[:, 2]).numpy().astype(int),
+    "a<c": (X_test[:, 0] < X_test[:, 2]).numpy().astype(int),
+}
+
+# 对每层激活训练线性探针并评估准确率
+def probe_accuracy(activations, label_arr):
+    """用逻辑回归探针评估激活是否编码了目标关系"""
+    clf = LogisticRegression(max_iter=500, random_state=0)
+    # 用一半数据训练探针，另一半测试
+    n = len(activations)
+    clf.fit(activations[:n//2], label_arr[:n//2])
+    preds = clf.predict(activations[n//2:])
+    return accuracy_score(label_arr[n//2:], preds)
+
+print(f"\n{'层':^8} {'探针1(a<b)':^12} {'探针2(b<c)':^12} {'探针3(a<c)':^12}")
+print("-" * 50)
+for layer_name, acts in [("输入", act_input), ("隐层1", act_h1), ("隐层2", act_h2)]:
+    accs = [probe_accuracy(acts, labels[k]) for k in ["a<b", "b<c", "a<c"]]
+    print(f"{layer_name:^8} {accs[0]:^12.1%} {accs[1]:^12.1%} {accs[2]:^12.1%}")
+```
 
 **步骤3：测试探针准确率**
 

@@ -99,13 +99,47 @@
 
 现在不看答案，枚举2⁴=16种赋值：
 
-| x₁  | x₂  | x₃  | x₄  | 满足？ |
-|:----|:----|:----|:----|:-------|
-| F   | F   | F   | F   | 否     |
-| F   | F   | F   | T   | 是     |
-| F   | F   | T   | F   | 否     |
-| …   | …   | …   | …   | …      |
-| T   | F   | T   | T   | 是     |
+```python
+from itertools import product
+
+# 定义4变量3-SAT实例
+# 每个子句是一个文字列表；正数 i 表示 x_i，负数 -i 表示 ¬x_i
+clauses = [
+    [1, -2, 3],   # (x₁ ∨ ¬x₂ ∨ x₃)
+    [-1, 2, -4],  # (¬x₁ ∨ x₂ ∨ ¬x₄)
+    [2, 3, 4],    # (x₂ ∨ x₃ ∨ x₄)
+    [-1, -3, 4],  # (¬x₁ ∨ ¬x₃ ∨ x₄)
+]
+
+def check_clause(clause, assignment):
+    """检查单个子句是否满足：至少一个文字为真"""
+    for lit in clause:
+        # lit > 0 表示正文字，lit < 0 表示否定文字
+        val = assignment[abs(lit) - 1]
+        if (lit > 0 and val) or (lit < 0 and not val):
+            return True
+    return False
+
+def check_sat(clauses, assignment):
+    """检查所有子句是否同时满足"""
+    return all(check_clause(c, assignment) for c in clauses)
+
+# 枚举所有 2^4 = 16 种赋值（False=0, True=1）
+print(f"{'x₁':^5}{'x₂':^5}{'x₃':^5}{'x₄':^5}{'满足？':^8}")
+print("-" * 35)
+solutions = []
+for bits in product([False, True], repeat=4):
+    sat = check_sat(clauses, bits)
+    mark = "是" if sat else "否"
+    vals = ["T" if b else "F" for b in bits]
+    print(f"{vals[0]:^5}{vals[1]:^5}{vals[2]:^5}{vals[3]:^5}{mark:^8}")
+    if sat:
+        solutions.append(bits)
+
+print(f"\n共找到 {len(solutions)} 个满足赋值：")
+for sol in solutions:
+    print("  ", {f"x{i+1}": ("T" if v else "F") for i, v in enumerate(sol)})
+```
 
 体验指数增长：
 
