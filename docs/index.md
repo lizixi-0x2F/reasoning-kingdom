@@ -3,45 +3,37 @@
 layout: home
 
 hero:
-  name: "Datawhale开源教程"
-  text: "AI前沿知识开源教程"
-  tagline: 开始学起来吧~
+  name: "推理王国"
+  text: "一本关于AI推理机制的开源教程"
+  tagline: 从熵增到边界，追问智能的本质
   image:
-    src: /learning.GIF
-    alt: Datawhale开源教程
+    src: /ReasoningKingdom.png
+    alt: 推理王国
   actions:
     - theme: brand
-      text: 开始学习
+      text: 开始阅读
       link: /chapter1/
 
 features:
-  - title: 💥 前沿
-    details: 紧跟技术发展输出最前沿的知识
+  - title: 🧠 深度
+    details: 从信息论、符号逻辑到Transformer，系统性剖析AI推理的底层机制
   - title: 🎁 免费
-    details: 无任何形式的收费
+    details: 全部内容开源，无任何形式收费
   - title: 🌐 开源
-    details: 教程和代码源文件全部托管在GitHub
+    details: 教程源文件托管在GitHub，欢迎贡献与反馈
 ---
 <script setup>
 import { VPTeamMembers } from 'vitepress/theme'
 
 const members = [
   {
-    avatar: 'https://www.github.com/Sm1les.png',
-    name: 'Sm1les',
+    avatar: 'https://www.github.com/lizixi-0x2F.png',
+    name: '李籽溪（兔狲）',
     title: '项目负责人',
     links: [
-      { icon: 'github', link: 'https://github.com/Sm1les' },
+      { icon: 'github', link: 'https://github.com/lizixi-0x2F' },
     ]
   },
-  {
-    avatar: 'https://www.github.com/Sm1les.png',
-    name: '马里奥',
-    title: '核心贡献者',
-    links: [
-      { icon: 'github', link: 'https://github.com/Sm1les' },
-    ]
-  }
 ]
 </script>
 

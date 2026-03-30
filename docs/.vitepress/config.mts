@@ -1,26 +1,20 @@
 import { defineConfig } from 'vitepress'
 // https://vitepress.dev/reference/site-config
 
-// 1. 获取环境变量并判断
-// 如果环境变量 EDGEONE 等于 '1'，说明在 EdgeOne 环境，使用根路径 '/'
-// 否则默认是 GitHub Pages 环境，使用仓库子路径 '/easy-vecdb/'
 const isEdgeOne = process.env.EDGEONE === '1'
-const baseConfig = isEdgeOne ? '/' : '/repo-template/'
+const baseConfig = isEdgeOne ? '/' : '/Reasoning-Kingdom/'
 
 export default defineConfig({
   lang: 'zh-CN',
-  title: "Datawhale开源教程",
-  description: "AI前沿知识开源教程",
+  title: "推理王国",
+  description: "一本关于AI推理机制的开源教程",
   base: baseConfig,
   markdown: {
     math: true
   },
   themeConfig: {
-    // https://vitepress.dev/reference/default-theme-config
     logo: '/datawhale-logo.png',
-    nav: [
-      { text: 'PDF版本下载', link: 'https://github.com/datawhalechina/repo-template/releases' },
-    ],
+    nav: [],
     search: {
       provider: 'local',
       options: {
@@ -43,23 +37,30 @@ export default defineConfig({
     sidebar: [
       {
         items: [
-          { text: '第1章：第1章的标题', link: '/chapter1/' },
-          { text: '第2章：第2章的标题', 
-            items: [
-              { text: '第2.1节：第2.1节的标题', link: '/chapter2/chapter2_1' },
-              { text: '第2.2节：第2.2节的标题', link: '/chapter2/chapter2_2' }
-            ]
-           }
+          { text: '导读', link: '/preface' },
+          { text: '第1章：对抗熵增——推理作为存活策略', link: '/chapter1/' },
+          { text: '第2章：符号的黎明——因果的第一次建模', link: '/chapter2/' },
+          { text: '第3章：从符号到向量——表示空间的第一次解放', link: '/chapter3/' },
+          { text: '第4章：流形假设——高维数据的隐秩序', link: '/chapter4/' },
+          { text: '第5章：拟合的陷阱——统计相关性不是推理', link: '/chapter5/' },
+          { text: '第6章：因果的边界——观测数据永远不够', link: '/chapter6/' },
+          { text: '第7章：复杂度的真相：不是快慢，是结构', link: '/chapter7/' },
+          { text: '第8章：启发式的契约：接受"差不多对"需要多少勇气', link: '/chapter8/' },
+          { text: '第9章：Transformer：动态拓扑的注意力革命', link: '/chapter9/' },
+          { text: '第10章：搜索的艺术：在推理空间中巡航', link: '/chapter10/' },
+          { text: '第11章：效能化推理：算法的经济学', link: '/chapter11/' },
+          { text: '第12章：隐式推理：神经网络的内部独白', link: '/chapter12/' },
+          { text: '第13章：推理的边界——以及我们为什么必须接受它', link: '/chapter13/' },
         ]
       }
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/datawhalechina/repo-template' }
+      { icon: 'github', link: 'https://github.com/lizixi-0x2F/ReasoningKingdom' }
     ],
 
     editLink: {
-      pattern: 'https://github.com/datawhalechina/repo-template/blob/main/docs/:path'
+      pattern: 'https://github.com/lizixi-0x2F/ReasoningKingdom/blob/main/docs/:path'
     },
 
     footer: {
