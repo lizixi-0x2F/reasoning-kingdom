@@ -54,6 +54,7 @@ export default defineConfig({
           { text: '第11章：效能化推理：算法的经济学', link: '/chapter11/' },
           { text: '第12章：隐式推理：神经网络的内部独白', link: '/chapter12/' },
           { text: '第13章：推理的边界——以及我们为什么必须接受它', link: '/chapter13/' },
+          { text: '第13章番外篇：暗线', link: '/chapter13/bonus' },
         ]
       }
     ],
