@@ -12,7 +12,7 @@ hero:
   actions:
     - theme: brand
       text: 开始阅读
-      link: /chapter1/
+      link: /preface
 
 features:
   - title: 🧠 深度
