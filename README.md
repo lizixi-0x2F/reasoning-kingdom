@@ -46,6 +46,7 @@ https://datawhalechina.github.io/reasoning-kingdom
 | [第7章：复杂度的真相：不是快慢，是结构](https://datawhalechina.github.io/reasoning-kingdom/chapter7) | P vs NP，计算复杂度揭示的宇宙不对称性 | ✅ |
 | [第8章：启发式的契约：接受"差不多对"需要多少勇气](https://datawhalechina.github.io/reasoning-kingdom/chapter8) | A*算法、启发函数与近似推理的哲学 | ✅ |
 | [第9章：Transformer：动态拓扑的注意力革命](https://datawhalechina.github.io/reasoning-kingdom/chapter9) | Self-Attention机制如何重构了推理的基础设施 | ✅ |
+| &nbsp;&nbsp;↳ [番外篇：注意力即因果](https://datawhalechina.github.io/reasoning-kingdom/chapter9/bonus) | 从因果外积重新推导注意力矩阵，softmax 是贝叶斯后验，causal mask 是 do 操作 | ✅ |
 | [第10章：搜索的艺术：在推理空间中巡航](https://datawhalechina.github.io/reasoning-kingdom/chapter10) | MCTS、树搜索与在不确定性中做决策 | ✅ |
 | [第11章：效能化推理：算法的经济学](https://datawhalechina.github.io/reasoning-kingdom/chapter11) | 推理的计算代价，以及如何让推理更高效 | ✅ |
 | [第12章：隐式推理：神经网络的内部独白](https://datawhalechina.github.io/reasoning-kingdom/chapter12) | 模型在输出第一个token之前，究竟做了什么 | ✅ |
