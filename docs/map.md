@@ -174,6 +174,6 @@
 ---
 
 <div align="center">
-  <a href="/volume1/chapter1/" style="margin-right: 20px;">▶ 开始上卷探险</a>
-  <a href="/volume2/chapter14/">▶ 开始下卷重建</a>
+  <a href="/reasoning-kingdom/volume1/chapter1/" style="margin-right: 20px;">▶ 开始上卷探险</a>
+  <a href="/reasoning-kingdom/volume2/chapter14/">▶ 开始下卷重建</a>
 </div>
