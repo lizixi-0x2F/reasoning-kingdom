@@ -13,7 +13,8 @@ import { h } from 'vue';
 
 // 公告栏组件
 const Announcement = () => h('div', {
-})
+    class: 'announcement-banner',
+},'欢迎大家提Issue反馈问题或建议，建设推理王国！')
 
 export default {
     extends: DefaultTheme,
